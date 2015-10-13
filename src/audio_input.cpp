@@ -121,6 +121,10 @@ void AudioInput::Stop()
 	}
 }
 
+float AudioInput::GetFrequencyResolution() {
+    return samplingRate / 2.f;
+}
+
 float AudioInput::GetCurrentAmplitude() {
     float rmsAmplitude = 0;
     mutex.lock();
@@ -151,18 +155,23 @@ float AudioInput::GetCurrentPitch() {
     mutex.unlock();
     return result; */
     
+    // Return the frequency of the bin with the strongest signal.
+    // Frequency range of bins is 0 to (samplingRate / 2.f).
     complex* input = GetTransformedInput();
-    float max_abs = 0;
-    int max_abs_index = 0;
+    float maxValue = 0;
+    float maxIndex = 0;
+    float rmsAmplitude = 0;
     for (int i = 0; i < numFrames; i++) {
         complex value = input[i];
         float abs = cmp_abs(value);
-        if (abs > max_abs) {
-            max_abs = abs;
-            max_abs_index = i;
+        if (abs > maxValue) {
+            maxValue = abs;
+            maxIndex = i;
         }
     }
-    return max_abs_index;
+    float amplitude = GetCurrentAmplitude();
+    float freq = (maxIndex / numFrames) * GetFrequencyResolution();
+    return (amplitude > 0.01) ? freq : 0.f;
 }
 
 float* AudioInput::GetCurrentInput()

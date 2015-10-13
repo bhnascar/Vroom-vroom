@@ -20,6 +20,10 @@ public:
 	/* Stops listening for audio input. */
 	void Stop();
     
+    /* Gets the maximum possible frequency that can be resolved by the
+     * Fourier transform for the given sampling rate. */
+    float GetFrequencyResolution();
+    
     /* Gets the amplitude of the current mic input. */
     float GetCurrentAmplitude();
     

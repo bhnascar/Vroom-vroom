@@ -22,10 +22,11 @@ public:
     
 private:
     bool keyLeft, keyRight, keyUp, keyDown;
+    int sceneIndex = 0;
     ofTrueTypeFont font;
     
     /* Draws the scene without any post-processing effects. */
-    void drawScene(bool flush);
+    void drawScene(int sceneIndex, bool flush);
     
     /* Draws post-processing effects on top of the scene. */
     void postProcessScene(bool flush);
@@ -38,6 +39,9 @@ private:
     
     /* Creates a road chunk on the audio highway. */
     ofAgingMesh createRoadChunk(float* signal, size_t signalLength);
+    
+    /* Creates a circular outline in the audio highway. */
+    ofAgingMesh createTunnelChunk(float* signal, size_t signalLength);
     
     /* Creates a line strip mesh visualizing the instantaneous sound wave. */
     ofAgingMesh createTimeDomainMesh(float* signal, size_t signalLength);
@@ -73,6 +77,7 @@ private:
      * meshes. */
     std::vector<ofAgingMesh> boxes;
     std::vector<ofAgingMesh> roadChunks;
-    std::vector<ofAgingMesh> timeMeshes;
+    std::vector<ofAgingMesh> tunnelChunks;
+    ofAgingMesh timeMesh;
     std::vector<ofAgingMesh> frequencyMeshes;
 };

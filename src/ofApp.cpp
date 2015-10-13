@@ -67,7 +67,7 @@ ofAgingMesh ofApp::createBox(float *signal, size_t signalLength) {
     
     float width = 200.f;
     float radius = max(windowWidth / 2, windowHeight / 2) * audio.GetCurrentAmplitude() / 0.3f;
-    float angle = ofRandom(0, M_PI) * audio.GetCurrentPitch() / 512.f;
+    float angle = ofRandom(0, M_PI) * audio.GetCurrentPitch() / (audio.GetFrequencyResolution() / 10.f);
     float topX = windowWidth / 2 + radius * cos(angle) - width / 2.f;
     float topY = windowHeight / 2 - radius * sin(angle) - width / 2.f;
     
@@ -99,7 +99,8 @@ ofAgingMesh ofApp::createRoadChunk(float *signal, size_t signalLength) {
     return mesh;
 }
 
-ofAgingMesh ofApp::createTimeDomainMesh(float* signal, size_t signalLength) {
+
+ofAgingMesh ofApp::createTunnelChunk(float* signal, size_t signalLength) {
     ofAgingMesh mesh(3.0f);
     mesh.setMode(OF_PRIMITIVE_LINE_LOOP);
     
@@ -112,6 +113,23 @@ ofAgingMesh ofApp::createTimeDomainMesh(float* signal, size_t signalLength) {
         float adjustedRadius = radius + 100 * signal[i];
         float x = windowWidth / 2 + adjustedRadius * cos((float)i / signalLength * 2 * (M_PI - 0.01));
         float y = windowHeight / 2 + adjustedRadius * sin((float)i / signalLength * 2 * (M_PI - 0.01));
+        float z = 0.f;
+        mesh.addVertex(ofVec3f(x, y, z));
+    }
+    
+    return mesh;
+}
+
+ofAgingMesh ofApp::createTimeDomainMesh(float* signal, size_t signalLength) {
+    ofAgingMesh mesh(3.0f);
+    mesh.setMode(OF_PRIMITIVE_LINE_STRIP);
+    
+    float start = 50.f;
+    float end = windowWidth - 50.f;
+    float increment = (end - start) / signalLength;
+    for (size_t i = 0; i < signalLength; i++) {
+        float x = start + i * increment;
+        float y = windowHeight / 4.f + 100.f * signal[i];
         float z = 0.f;
         mesh.addVertex(ofVec3f(x, y, z));
     }
@@ -137,59 +155,55 @@ ofAgingMesh ofApp::createFrequencySpectrumMesh(complex* spectrum, size_t spectru
 }
 
 void ofApp::update() {
-    // Move older spectrums meshes back.
+    // Move older meshes back.
     for (int i = 0; i < roadChunks.size(); i++) {
-        // Delete dead spectrums.
         if (!roadChunks[i].isAlive()) {
             roadChunks.erase(roadChunks.begin() + i--);
         }
     }
     for (int i = 0; i < boxes.size(); i++) {
-        // Delete dead spectrums.
         if (!boxes[i].isAlive()) {
             boxes.erase(boxes.begin() + i--);
         }
     }
-    for (int i = 0; i < timeMeshes.size(); i++) {
-        // Delete dead spectrums.
-        if (!timeMeshes[i].isAlive()) {
-            timeMeshes.erase(timeMeshes.begin() + i--);
+    for (int i = 0; i < tunnelChunks.size(); i++) {
+        if (!tunnelChunks[i].isAlive()) {
+            tunnelChunks.erase(tunnelChunks.begin() + i--);
         }
     }
     for (int i = 0; i < frequencyMeshes.size(); i++) {
-        // Delete dead spectrums.
         if (!frequencyMeshes[i].isAlive()) {
             frequencyMeshes.erase(frequencyMeshes.begin() + i--);
         }
     }
 
-    // Create time-domain mesh.
     static int count = 0;
+    float* buffer = audio.GetCurrentInput();
+    
+    // Create tunnel chunk.
     if (count++ % 10 == 0) {
-        float* buffer = audio.GetCurrentInput();
-        ofAgingMesh timeMesh = createTimeDomainMesh(buffer, 1024);
-        timeMeshes.push_back(timeMesh);
-        delete[] buffer;
+        ofAgingMesh tunnelChunk = createTunnelChunk(buffer, 1024);
+        tunnelChunks.push_back(tunnelChunk);
     }
     
     // Create road chunk.
     if (count % 30 == 0) {
-        float* buffer = audio.GetCurrentInput();
         ofAgingMesh roadChunk = createRoadChunk(buffer, 1024);
         roadChunks.push_back(roadChunk);
-        delete[] buffer;
     }
     
     // Create box.
     if (count % 30 == 0) {
-        float* buffer = audio.GetCurrentInput();
         ofAgingMesh box = createBox(buffer, 1024);
         boxes.push_back(box);
-        delete[] buffer;
     }
     
+    // Create timeMesh.
+    timeMesh = createTimeDomainMesh(buffer, 1024);
+    delete[] buffer;
+    
     // Compute FFT. Add new frequency spectrum mesh.
-    if (count % 3 == 0) {
+    if (count % 5 == 0) {
         complex* frequencyBuffer = audio.GetTransformedInput();
         ofAgingMesh frequencyMesh = createFrequencySpectrumMesh(frequencyBuffer, 1024);
         frequencyMeshes.push_back(frequencyMesh);
@@ -224,7 +238,7 @@ void ofApp::update() {
     modelPerturbation = ofVec3f(sin(2.f * time), cos(1.5f * time), 1.5 * sin(3.f * time));
 }
 
-void ofApp::drawScene(bool flush) {
+void ofApp::drawScene(int sceneIndex, bool flush) {
     sceneBuffer.begin();
     
     // Enable depth testing.
@@ -232,73 +246,80 @@ void ofApp::drawScene(bool flush) {
     
     ofBackground(0, 0, 0);
     
-    // Draw ship.
-    ofVec3f finalPosition = modelPosition + 10.f * modelPerturbation;
-    ofPushMatrix();
-    ofTranslate(finalPosition.x, finalPosition.y, finalPosition.z);
-    ofRotate(modelRotation.x, 0, 0, 1);
-    ofSetColor(255, 0, 255, 255);
-    ship.draw();
-    ofSetColor(255, 255, 255, 255);
-    ofPopMatrix();
-    
-    // Draw instantaneous sound signal.
-    for (int i = 0; i < timeMeshes.size(); i++) {
+    if (sceneIndex == 1) {
+        // Draw ship.
+        ofVec3f finalPosition = modelPosition + 10.f * modelPerturbation;
         ofPushMatrix();
-        ofTranslate(0, 0, -5000.f * timeMeshes[i].getAgePercent() + 200.f);
-        ofSetColor(0, 255.f * (1.f - timeMeshes[i].getAgePercent()), 0, 255);
-        timeMeshes[i].draw();
+        ofTranslate(finalPosition.x, finalPosition.y, finalPosition.z);
+        ofRotate(modelRotation.x, 0, 0, 1);
+        ofSetColor(255, 0, 255, 255);
+        ship.draw();
         ofSetColor(255, 255, 255, 255);
         ofPopMatrix();
-    }
-    
-    // Draw Fourier transformed signal.
-    /*
-    for (int i = 0; i < frequencyMeshes.size(); i++) {
-        ofPushMatrix();
-        ofTranslate(0, 0, -500.f * (1.f - frequencyMeshes[i].getAgePercent()));
-        ofSetColor(0, 200.f * (1.f - timeMeshes[i].getAgePercent()), 255.f * (1.f - timeMeshes[i].getAgePercent()), 255);
-        frequencyMeshes[i].draw();
-        ofSetColor(255, 255, 255, 255);
-        ofPopMatrix();
-    }*/
-    
-    // Draw road chunks.
-    for (int i = 0; i < roadChunks.size(); i++) {
-        ofPushMatrix();
-        ofTranslate(0, 0, -5000.f * roadChunks[i].getAgePercent() + 200.f);
-        if (flush) {
-            ofEnableAlphaBlending();
-            ofSetColor(0, 200.f * (1.f - timeMeshes[i].getAgePercent()), 255.f * (1.f - timeMeshes[i].getAgePercent()), 20);
-            roadChunks[i].setMode(OF_PRIMITIVE_TRIANGLE_FAN);
+        
+        // Draw tunnel chunks.
+        for (int i = 0; i < tunnelChunks.size(); i++) {
+            ofPushMatrix();
+            ofTranslate(0, 0, -5000.f * tunnelChunks[i].getAgePercent() + 200.f);
+            ofSetColor(0, 255.f * (1.f - tunnelChunks[i].getAgePercent()), 0, 255);
+            tunnelChunks[i].draw();
+            ofSetColor(255, 255, 255, 255);
+            ofPopMatrix();
+        }
+        
+        // Draw road chunks.
+        for (int i = 0; i < roadChunks.size(); i++) {
+            ofPushMatrix();
+            ofTranslate(0, 0, -5000.f * roadChunks[i].getAgePercent() + 200.f);
+            if (flush) {
+                ofEnableAlphaBlending();
+                ofSetColor(0, 200.f * (1.f - roadChunks[i].getAgePercent()), 255.f * (1.f - roadChunks[i].getAgePercent()), 20);
+                roadChunks[i].setMode(OF_PRIMITIVE_TRIANGLE_FAN);
+                roadChunks[i].draw();
+                ofSetColor(255, 255, 255, 255);
+                ofDisableAlphaBlending();
+            }
+            ofSetColor(0, 200.f * (1.f - roadChunks[i].getAgePercent()), 255.f * (1.f - roadChunks[i].getAgePercent()), 255);
+            roadChunks[i].setMode(OF_PRIMITIVE_LINE_LOOP);
             roadChunks[i].draw();
             ofSetColor(255, 255, 255, 255);
-            ofDisableAlphaBlending();
+            ofPopMatrix();
         }
-        ofSetColor(0, 200.f * (1.f - timeMeshes[i].getAgePercent()), 255.f * (1.f - timeMeshes[i].getAgePercent()), 255);
-        roadChunks[i].setMode(OF_PRIMITIVE_LINE_LOOP);
-        roadChunks[i].draw();
-        ofSetColor(255, 255, 255, 255);
-        ofPopMatrix();
-    }
-    
-    // Draw boxes.
-    for (int i = boxes.size() - 1; i >= 0; i--) {
-        ofPushMatrix();
-        ofTranslate(0, 0, -5000.f * boxes[i].getAgePercent() + 200.f);
-        if (flush) {
-            ofEnableAlphaBlending();
-            ofSetColor(255.f * (1.f - boxes[i].getAgePercent()), 200.f * (1.f - boxes[i].getAgePercent()), 0, 20);
-            boxes[i].setMode(OF_PRIMITIVE_TRIANGLE_FAN);
+        
+        // Draw boxes.
+        for (int i = boxes.size() - 1; i >= 0; i--) {
+            ofPushMatrix();
+            ofTranslate(0, 0, -5000.f * boxes[i].getAgePercent() + 200.f);
+            if (flush) {
+                ofEnableAlphaBlending();
+                ofSetColor(255.f * (1.f - boxes[i].getAgePercent()), 200.f * (1.f - boxes[i].getAgePercent()), 0, 20);
+                boxes[i].setMode(OF_PRIMITIVE_TRIANGLE_FAN);
+                boxes[i].draw();
+                ofSetColor(255, 255, 255, 255);
+                ofDisableAlphaBlending();
+            }
+            ofSetColor(200.f * (1.f - boxes[i].getAgePercent()), 200.f * (1.f - boxes[i].getAgePercent()), 0, 255);
+            boxes[i].setMode(OF_PRIMITIVE_LINE_LOOP);
             boxes[i].draw();
             ofSetColor(255, 255, 255, 255);
-            ofDisableAlphaBlending();
+            ofPopMatrix();
         }
-        ofSetColor(200.f * (1.f - boxes[i].getAgePercent()), 200.f * (1.f - boxes[i].getAgePercent()), 0, 255);
-        boxes[i].setMode(OF_PRIMITIVE_LINE_LOOP);
-        boxes[i].draw();
+    }
+    else {
+        // Draw instantaneous sound signal.
+        ofSetColor(0, 255, 0, 255);
+        timeMesh.draw();
         ofSetColor(255, 255, 255, 255);
-        ofPopMatrix();
+        
+        // Draw Fourier transformed signal.
+        for (int i = 0; i < frequencyMeshes.size(); i++) {
+            ofPushMatrix();
+            ofTranslate(0, 0, -500.f * (1.f - frequencyMeshes[i].getAgePercent()));
+            ofSetColor(0, 200.f * frequencyMeshes[i].getAgePercent(), 255.f * frequencyMeshes[i].getAgePercent(), 255);
+            frequencyMeshes[i].draw();
+            ofSetColor(255, 255, 255, 255);
+            ofPopMatrix();
+        }
     }
     
     // Disable depth testing.
@@ -350,7 +371,7 @@ void ofApp::postProcessScene(bool flush) {
 
 void ofApp::draw() {
     // Draw scene.
-    drawScene(true);
+    drawScene(sceneIndex, true);
     
     // Add glow.
     ofEnableBlendMode(OF_BLENDMODE_ADD);
@@ -361,6 +382,12 @@ void ofApp::draw() {
     std::ostringstream buff;
     buff << ofGetFrameRate();;
     font.drawString(buff.str(), 10, 30);
+    
+    // Print instructions.
+    font.drawString("Press tab to change scenes.", windowWidth - 340, 30);
+    if (sceneIndex == 1) {
+        font.drawString("Use arrow keys to fly around!", windowWidth / 2 - 160, windowHeight - 15);
+    }
 }
 
 void ofApp::keyPressed(int key) {
@@ -376,6 +403,9 @@ void ofApp::keyPressed(int key) {
             break;
         case OF_KEY_DOWN:
             keyDown = true;
+            break;
+        case OF_KEY_TAB:
+            sceneIndex = (sceneIndex) ? 0 : 1;
             break;
         default:
             break;
