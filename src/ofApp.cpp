@@ -258,14 +258,22 @@ void ofApp::drawScene(int sceneIndex, bool flush) {
         ofPopMatrix();
         
         // Draw tunnel chunks.
+        static int count = 0;
+        float frequency = 0.01;
+        float red = sin(frequency * count + 0) * 127 + 128;
+        float green = sin(frequency * count + 2) * 127 + 128;
+        float blue = sin(frequency * count + 4) * 127 + 128;
+        ofColor tunnelColor(red, green, blue);
         for (int i = 0; i < tunnelChunks.size(); i++) {
             ofPushMatrix();
             ofTranslate(0, 0, -5000.f * tunnelChunks[i].getAgePercent() + 200.f);
-            ofSetColor(0, 255.f * (1.f - tunnelChunks[i].getAgePercent()), 0, 255);
+            ofColor color = tunnelColor * (1.f - tunnelChunks[i].getAgePercent());
+            ofSetColor(color);
             tunnelChunks[i].draw();
             ofSetColor(255, 255, 255, 255);
             ofPopMatrix();
         }
+        count++;
         
         // Draw road chunks.
         for (int i = 0; i < roadChunks.size(); i++) {
